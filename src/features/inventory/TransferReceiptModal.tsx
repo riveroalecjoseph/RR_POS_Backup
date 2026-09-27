@@ -52,6 +52,18 @@ export const TransferReceiptModal: React.FC<TransferReceiptModalProps> = ({
 
   const handleConfirm = async () => {
     setErrorMessage(null);
+
+    if (hasAnyDiscrepancy) {
+      const hasGeneralNote = Boolean(discrepancyNotes && discrepancyNotes.trim().length > 0);
+      const hasItemNotes = receiptItems.some(
+        (i) => i.quantityReceived !== i.quantitySent && Boolean(i.notes && i.notes.trim().length > 0)
+      );
+      if (!hasGeneralNote && !hasItemNotes) {
+        setErrorMessage("A discrepancy was detected. A mandatory explanation note is required explaining the mismatch (e.g. transit damage, missing carton).");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const payload = receiptItems.map((item) => ({

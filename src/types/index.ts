@@ -1,5 +1,7 @@
 export type UserRole = "cashier" | "branch_manager" | "inventory_manager" | "super_admin";
 
+export type AppTab = "pos" | "inventory" | "transfers" | "staff" | "audit";
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -181,6 +183,7 @@ export interface TransferRecord {
   status: TransferStatus;
   notes?: string;
   discrepancyNotes?: string;
+  hasDiscrepancy?: boolean;
   dispatchedBy: string;
   dispatchedByName?: string;
   receivedBy?: string;

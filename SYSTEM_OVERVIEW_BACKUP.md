@@ -1,9 +1,9 @@
 # RR POS & Multi-Branch Inventory Management System — System Overview Backup
-## Exhaustive Technical & Architectural Reference Specification (Backup Workstation Edition)
+## Exhaustive Technical & Architectural Reference Specification (Streamlined Workstation Edition)
 
 > **Classification:** Production-Grade Retail Application  
-> **Architecture:** Hybrid Cloud-Relational + Offline-First Client Mirror + Supabase Edge Functions + Standalone Native Workstation  
-> **Core Stack:** React 18, TypeScript, Tailwind CSS, Vite, Tauri 2.0 (Rust), Supabase (PostgreSQL 15 & Edge Functions), Resend API, IndexedDB v3 (`idb`), Vitest  
+> **Architecture:** Offline-First Hybrid Client Mirror + Cloud-Relational Postgres + Direct In-App Auth Provisioning + Native Desktop Workstation  
+> **Core Stack:** React 18, TypeScript, Tailwind CSS, Vite, Tauri 2.0 (Rust), Supabase (PostgreSQL 15 & Auth), IndexedDB v3 (`idb`), Vitest  
 > **Target Audience:** Systems Architects, Developers, Store Managers, Security Auditors, and AI Analytical Agents  
 
 ---
@@ -13,20 +13,19 @@
 2. [High-Level Architecture & Topological Data Flow](#2-high-level-architecture--topological-data-flow)
 3. [Technology Stack & Library Justifications](#3-technology-stack--library-justifications)
 4. [Complete Database Schema & Storage Specifications](#4-complete-database-schema--storage-specifications)
-   - [4.1 PostgreSQL / Supabase Cloud Schema (11 Tables)](#41-postgresql--supabase-cloud-schema-11-tables)
-   - [4.2 Local Browser Storage: IndexedDB v3 (9 Stores)](#42-local-browser-storage-indexeddb-v3-9-stores)
+   - [4.1 PostgreSQL / Supabase Cloud Schema](#41-postgresql--supabase-cloud-schema)
+   - [4.2 Local Browser Storage: IndexedDB v3](#42-local-browser-storage-indexeddb-v3)
 5. [In-Depth Feature Mechanics & State Machines](#5-in-depth-feature-mechanics--state-machines)
-   - [5.1 Point of Sale (POS) & Checkout Engine](#51-point-of-sale-pos--checkout-engine)
-   - [5.2 Multi-Branch Inventory & Stock Control](#52-multi-branch-inventory--stock-control)
+   - [5.1 Point of Sale (POS) & Checkout Engine (`/pos`)](#51-point-of-sale-pos--checkout-engine-pos)
+   - [5.2 Multi-Branch Inventory & Stock Control (`/inventory`)](#52-multi-branch-inventory--stock-control-inventory)
    - [5.3 Branch Category & Product Creation with Catalog Integrity Logic](#53-branch-category--product-creation-with-catalog-integrity-logic)
-   - [5.4 Inter-Branch Transfer Protocol & State Machine](#54-inter-branch-transfer-protocol--state-machine)
-   - [5.5 Granular Per-Store Practice Mode (Sandbox)](#55-granular-per-store-practice-mode-sandbox)
-   - [5.6 Dynamic Branch Management (CRUD) & Validation](#56-dynamic-branch-management-crud--validation)
-   - [5.7 Authentication, Edge Provisioning & Staff Management](#57-authentication-edge-provisioning--staff-management)
+   - [5.4 Two-Stage Handshake Transfers (`/transfers`)](#54-two-stage-handshake-transfers-transfers)
+   - [5.5 Direct In-App Staff Provisioning (`/staff`)](#55-direct-in-app-staff-provisioning-staff)
+   - [5.6 Owner Audit Center (`/audit`)](#56-owner-audit-center-audit)
+   - [5.7 Multi-Branch Creation & Zero-Stock Priming](#57-multi-branch-creation--zero-stock-priming)
    - [5.8 Offline Engine, Staging Queue & Auto-Sync Engine](#58-offline-engine-staging-queue--auto-sync-engine)
-   - [5.9 Real-Time Audit Trail & Compliance Monitoring](#59-real-time-audit-trail--compliance-monitoring)
-   - [5.10 Business Analytics & Financial Reporting](#510-business-analytics--financial-reporting)
-   - [5.11 Role-Based Access Control (RBAC) & Screen Access Policy](#511-role-based-access-control-rbac--screen-access-policy)
+   - [5.9 Role-Based Access Control (RBAC) & 5 Streamlined Views](#59-role-based-access-control-rbac--5-streamlined-views)
+   - [5.10 Pruning of Dormant Enterprise Features](#510-pruning-of-dormant-enterprise-features)
 6. [Complete Codebase Directory & File Index](#6-complete-codebase-directory--file-index)
 7. [Automated Testing Suite & Verification Matrix](#7-automated-testing-suite--verification-matrix)
 8. [Configuration, Environment Variables & Deployment](#8-configuration-environment-variables--deployment)
@@ -37,14 +36,14 @@
 
 ## 1. Executive Summary & System Purpose
 
-The **RR POS & Multi-Branch Inventory Management System** is an enterprise-grade retail workstation and inventory platform tailored for retail store chains, franchise outlets, and multi-location convenience markets. 
+The **RR POS & Multi-Branch Inventory Management System** (`RR_POS_Backup`) is established as a focused, offline-first hybrid POS and inventory workstation tailored for multi-branch retail operations.
 
 ### Core Problems Solved:
-1. **Network Fragility in Retail Operations:** Traditional cloud POS systems halt transactions when in-store internet connectivity drops. RR POS uses an **offline-first local database mirror (IndexedDB v3)** with an automated staging queue, enabling seamless checkout and inventory deductions during network outages.
-2. **Inter-Branch Stock Discrepancies:** Transferring stock between branches frequently leads to lost merchandise or untracked shrinkage. RR POS enforces a strict **two-step transfer state machine (`PENDING` $\to$ `IN_TRANSIT` $\to$ `RECEIVED`)** requiring physical item inspection, receipt confirmation, and discrepancy logging.
+1. **Network Fragility in Retail Operations:** Traditional cloud POS systems halt transactions when in-store internet connectivity drops. RR POS uses an **offline-first local database mirror (IndexedDB v3)** with an automated staging queue (`syncQueue.ts`), enabling instant offline checkout, local stock updates, and automatic FIFO synchronization once reconnected.
+2. **Inter-Branch Stock Discrepancies:** Transferring stock between branches frequently leads to lost merchandise or untracked shrinkage. RR POS enforces a strict **two-stage handshake transfer protocol (`Dispatch -> IN_TRANSIT -> Confirm Receipt`)** requiring physical item count verification, discrepancy variance logging, and mandatory explanation notes for shortages or overages.
 3. **Multi-Branch Catalog Integrity:** When store managers register new products, stock availability across the store network can easily fragment. RR POS enforces **Catalog Integrity Logic**: creating a product registers the master record, provisions active branch stock, populates zero-stock records across all sibling branches for instant transfer recognition, and writes an immutable `INITIAL_STOCK` audit ledger entry.
-4. **Staff Training Contamination:** Training new cashiers in live retail systems often creates bogus sales records that pollute revenue and tax reports. RR POS features **Store-Level Practice Sandbox Mode**, which isolates training data to the browser storage for designated branches and automatically purges all practice records upon completion.
-5. **Multi-Role Security & Screen Access Enforcement:** Strict Role-Based Access Control (RBAC) isolates Cashiers (POS only), Branch Managers (POS, Inventory & Transfers), and Super Admins (Full system, Branch Switcher, Owner Audit Center), paired with an **immutable audit trail** tracking all actions.
+4. **Streamlined Workstation Efficiency:** Instead of sprawling enterprise modules, the system concentrates strictly on 5 core operational views: **POS**, **Branch Inventory**, **Transfers**, **Staff**, and **Audit Center**. Dormant features (Practice Mode, Analytics charts, edge function invites) are pruned to deliver blazing-fast load times and rock-solid stability.
+5. **Multi-Role Security & Screen Access Enforcement:** Strict Role-Based Access Control (RBAC) isolates Cashiers (POS only), Branch Managers (POS, Inventory, Transfers), and Super Admins (Full system access across all 5 views), paired with an **immutable audit trail** tracking all actions.
 
 ---
 
@@ -53,35 +52,26 @@ The **RR POS & Multi-Branch Inventory Management System** is an enterprise-grade
 ```mermaid
 flowchart TD
     subgraph Client [Browser / Desktop Client: React 18 + TypeScript + Tauri 2.0]
-        UI[User Interface / React Views]
+        UI[User Interface / 5 Streamlined Views]
         AppContext[AppContext Global State Engine]
         
         subgraph CoreLogic [Core Pure Business Logic]
-            POSCalc[Cart & Discount Math]
-            TransferSM[Transfer State Machine]
-            AuditSM[Stock Audit & Delta Engine]
-            SyncEngine[Offline Sync Queue Engine]
-            SandboxEngine[Practice Sandbox Manager]
+            POSCalc[Cart & Discount Math: cartCalculations.ts]
+            TransferSM[Transfer State Machine: transferStateMachine.ts]
+            AuditSM[Stock Audit & Movement Engine: auditMovement.ts]
+            SyncEngine[Offline Sync Queue Engine: syncQueue.ts]
+            SessionCache[Synchronous Session Cache: sessionCache.ts]
         end
         
         subgraph LocalStorage [Client Local Persistence]
             IDB[(IndexedDB v3: rr_pos_inventory_db)]
-            LocalStorage[(LocalStorage: Practice Settings & Auth Tokens)]
+            LocalStorage[(LocalStorage: Active Branch & Session Cache)]
         end
     end
 
     subgraph SupabaseCloud [Supabase Cloud Platform]
-        subgraph EdgeFunctions [Supabase Edge Functions: Deno / TypeScript]
-            InviteFn[invite-user/index.ts: Multi-Tier Provisioning & Link Generator]
-            DeleteFn[delete-user/index.ts: Staff Deletion & Session Revocation]
-        end
-
-        AuthService[Supabase Auth Service: JWT & Admin API]
-        PostgresDB[(PostgreSQL 15 Database + RLS)]
-    end
-
-    subgraph ExternalServices [Third-Party APIs & Gateways]
-        ResendAPI[Resend API: Transactional Email Gateway]
+        AuthService[Supabase Auth Service: Direct signUp & Session Management]
+        PostgresDB[(PostgreSQL 15 Database + Row-Level Security)]
     end
 
     UI --> AppContext
@@ -89,145 +79,124 @@ flowchart TD
     AppContext <--> LocalStorage
     AppContext <--> IDB
 
-    AppContext -->|Online: Realtime API Calls| PostgresDB
-    AppContext -->|Online: Auth Requests| AuthService
+    AppContext -->|Online: Direct Queries & Mutations| PostgresDB
+    AppContext -->|Online: Direct Auth Requests| AuthService
     SyncEngine -->|Auto-Flush Staged Offline Queue| PostgresDB
-
-    UI -->|Admin: supabase.functions.invoke 'invite-user'| InviteFn
-    UI -->|Admin: supabase.functions.invoke 'delete-user'| DeleteFn
-    InviteFn -->|Service Role Admin API| AuthService
-    InviteFn -->|Service Role Upsert| PostgresDB
-    InviteFn -->|Direct Dispatch| ResendAPI
-    DeleteFn -->|Service Role Delete User| AuthService
-    DeleteFn -->|Service Role Delete Profile| PostgresDB
 ```
 
 ---
 
 ## 3. Technology Stack & Library Justifications
 
-| Layer | Technology | Justification & Architectural Fit |
+| Layer | Technology | Justification |
 | :--- | :--- | :--- |
-| **Frontend Framework** | React 18 (TypeScript) | Declarative UI, Strict typing, concurrent rendering capabilities, enterprise maintainability. |
-| **Desktop Runtime** | Tauri 2.0 (Rust) | Zero Chromium overhead, native OS WebView rendering, sub-50MB memory footprint, hardened OS security boundary (`com.rrpos.workstation`). |
-| **Styling & Design System** | Tailwind CSS + Lucide React | High-velocity utility classes, consistent dark slate aesthetic, customized touch-friendly components. |
-| **Build & Bundler** | Vite 6 | Sub-second HMR, optimized Rollup bundling with relative asset resolution (`base: './'`) for static hosting and offline desktop workstation modes. |
-| **Local Persistence** | IndexedDB v3 (`idb`) | Durable client-side relational storage, structured object stores, indexed lookups, offline operation. |
-| **Backend & Database** | Supabase (PostgreSQL 15) | Relational integrity, foreign key cascading, Row Level Security (RLS), Realtime replication. |
-| **Serverless Compute** | Supabase Edge Functions (Deno) | Zero-cold-start TypeScript edge lambdas for privileged admin operations (user invite/delete). |
-| **Email Gateway** | Resend API | Reliable delivery of transactional onboarding invites with branded HTML templates and fallback link generation. |
-| **Testing Framework** | Vitest | High-speed unit testing sharing Vite configuration, comprehensive test runner for pure core logic. |
-| **CI/CD** | GitHub Actions | Dual pipeline compiling native Windows desktop installers and deploying web distribution to GitHub Pages. |
+| **Frontend Framework** | React 18 + TypeScript | Component-driven architecture, strict typing for monetary calculations and transfer states. |
+| **Styling** | Vanilla CSS + Tailwind CSS | Hardware-accelerated UI, zero-runtime overhead, high-contrast dark theme optimized for POS terminals. |
+| **Build Tooling** | Vite | Lightning-fast HMR and bundle compilation configured with `base: './'` for desktop webview and static hosting. |
+| **Desktop Wrapper** | Tauri 2.0 (Rust) | Native Windows binary packaging (`com.rrpos.workstation`), zero-bloat memory footprint (~40MB vs Electron's ~300MB). |
+| **Offline Storage** | IndexedDB v3 (`idb`) | Browser-native transactional database storing complete catalogs, stock balances, transfers, and offline queues. |
+| **Backend / DB** | Supabase (PostgreSQL 15) | Relational integrity, Row Level Security (RLS), ACID transactions, and auth services. |
+| **Testing** | Vitest | Sub-second execution for cart math, transfer state machine, offline queue, and audit ledger suites. |
 
 ---
 
 ## 4. Complete Database Schema & Storage Specifications
 
-### 4.1 PostgreSQL / Supabase Cloud Schema (11 Tables)
+### 4.1 PostgreSQL / Supabase Cloud Schema
 
 #### 1. `public.branches`
-Defines physical and virtual branch locations.
+Physical store locations.
 ```sql
 CREATE TABLE public.branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
+    code VARCHAR(50) NOT NULL UNIQUE,
     address TEXT,
     phone VARCHAR(50),
     is_active BOOLEAN NOT NULL DEFAULT true,
-    is_practice_mode BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 #### 2. `public.categories`
-Product classifications for POS filtering and reporting.
+Product categorization and display ordering.
 ```sql
 CREATE TABLE public.categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
     slug VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
     display_order INTEGER NOT NULL DEFAULT 0,
-    color VARCHAR(30) DEFAULT '#3B82F6',
+    color VARCHAR(20) DEFAULT '#059669',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_categories_display_order ON public.categories(display_order);
 ```
 
 #### 3. `public.products`
-Master catalog items across all branches.
+Enterprise master catalog.
 ```sql
 CREATE TABLE public.products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
     sku VARCHAR(100) NOT NULL UNIQUE,
     barcode VARCHAR(100) UNIQUE,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
-    price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    selling_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    unit VARCHAR(50) DEFAULT 'pc',
-    image_url TEXT,
+    reorder_point INTEGER NOT NULL DEFAULT 5,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_products_category ON public.products(category_id);
-CREATE INDEX idx_products_barcode ON public.products(barcode);
 ```
 
 #### 4. `public.branch_stock`
-Current inventory balances per item per branch.
+Physical inventory allocation per branch.
 ```sql
 CREATE TABLE public.branch_stock (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     branch_id UUID NOT NULL REFERENCES public.branches(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-    quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-    low_stock_threshold INTEGER NOT NULL DEFAULT 10,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    reorder_point INTEGER NOT NULL DEFAULT 5,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_branch_product UNIQUE (branch_id, product_id)
 );
-CREATE INDEX idx_branch_stock_lookup ON public.branch_stock(branch_id, product_id);
 ```
 
-#### 5. `public.transactions`
-Header records for sales completed at the POS.
+#### 5. `public.transfers`
+Two-stage inter-branch transfer headers.
 ```sql
-CREATE TABLE public.transactions (
+CREATE TABLE public.transfers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_number VARCHAR(100) NOT NULL UNIQUE,
-    branch_id UUID NOT NULL REFERENCES public.branches(id),
-    cashier_id UUID REFERENCES auth.users(id),
-    subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    tax_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    grand_total NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    payment_method VARCHAR(30) NOT NULL CHECK (payment_method IN ('cash', 'card', 'e_wallet')),
-    amount_tendered NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    change_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    status VARCHAR(30) NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'refunded', 'offline_synced')),
+    transfer_number VARCHAR(100) NOT NULL UNIQUE,
+    source_branch_id UUID NOT NULL REFERENCES public.branches(id),
+    target_branch_id UUID NOT NULL REFERENCES public.branches(id),
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'IN_TRANSIT', 'RECEIVED', 'CANCELLED')),
     notes TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    discrepancy_notes TEXT,
+    has_discrepancy BOOLEAN NOT NULL DEFAULT false,
+    dispatched_by UUID REFERENCES auth.users(id),
+    received_by UUID REFERENCES auth.users(id),
+    dispatched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    received_at TIMESTAMPTZ,
+    CONSTRAINT chk_different_branches CHECK (source_branch_id <> target_branch_id)
 );
-CREATE INDEX idx_tx_branch_created ON public.transactions(branch_id, created_at DESC);
 ```
 
-#### 6. `public.transaction_items`
-Line items associated with transactions.
+#### 6. `public.transfer_items`
+Manifest line items for inter-branch transfers.
 ```sql
-CREATE TABLE public.transaction_items (
+CREATE TABLE public.transfer_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
+    transfer_id UUID NOT NULL REFERENCES public.transfers(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES public.products(id),
-    product_name VARCHAR(255) NOT NULL,
-    unit_price NUMERIC(12, 2) NOT NULL,
-    quantity INTEGER NOT NULL CHECK (quantity > 0),
-    subtotal NUMERIC(12, 2) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    quantity_sent INTEGER NOT NULL CHECK (quantity_sent > 0),
+    quantity_received INTEGER CHECK (quantity_received >= 0),
+    notes TEXT
 );
-CREATE INDEX idx_tx_items_txid ON public.transaction_items(transaction_id);
 ```
 
 #### 7. `public.stock_movements`
@@ -250,290 +219,147 @@ CREATE TABLE public.stock_movements (
     created_by UUID REFERENCES auth.users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_sm_branch_product ON public.stock_movements(branch_id, product_id, created_at DESC);
 ```
 
-#### 8. `public.transfers`
-Inter-branch transfer headers.
-```sql
-CREATE TABLE public.transfers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transfer_number VARCHAR(100) NOT NULL UNIQUE,
-    source_branch_id UUID NOT NULL REFERENCES public.branches(id),
-    target_branch_id UUID NOT NULL REFERENCES public.branches(id),
-    status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'IN_TRANSIT', 'RECEIVED', 'CANCELLED')),
-    notes TEXT,
-    discrepancy_notes TEXT,
-    is_practice_mode BOOLEAN NOT NULL DEFAULT false,
-    dispatched_by UUID REFERENCES auth.users(id),
-    received_by UUID REFERENCES auth.users(id),
-    dispatched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    received_at TIMESTAMPTZ,
-    CONSTRAINT chk_different_branches CHECK (source_branch_id <> target_branch_id)
-);
-CREATE INDEX idx_transfers_status ON public.transfers(status);
-```
+#### 8. `public.transactions` & `public.transaction_items`
+Sales records with tender breakdowns and offline synchronization status.
 
-#### 9. `public.transfer_items`
-Manifest of items included in an inter-branch transfer.
-```sql
-CREATE TABLE public.transfer_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transfer_id UUID NOT NULL REFERENCES public.transfers(id) ON DELETE CASCADE,
-    product_id UUID NOT NULL REFERENCES public.products(id),
-    quantity_sent INTEGER NOT NULL CHECK (quantity_sent > 0),
-    quantity_received INTEGER CHECK (quantity_received >= 0),
-    notes TEXT
-);
-CREATE INDEX idx_transfer_items_tid ON public.transfer_items(transfer_id);
-```
-
-#### 10. `public.profiles`
-Staff identities, branch assignments, and roles.
-```sql
-CREATE TABLE public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email VARCHAR(255) NOT NULL,
-    full_name VARCHAR(255),
-    role VARCHAR(30) NOT NULL DEFAULT 'cashier' CHECK (
-      role IN ('super_admin', 'branch_manager', 'inventory_manager', 'cashier')
-    ),
-    branch_id UUID REFERENCES public.branches(id) ON DELETE SET NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    must_change_password BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-#### 11. `public.audit_logs`
-Enterprise security and operational event trail.
-```sql
-CREATE TABLE public.audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id UUID REFERENCES public.branches(id),
-    user_id UUID REFERENCES auth.users(id),
-    action VARCHAR(100) NOT NULL,
-    entity VARCHAR(100) NOT NULL,
-    entity_id VARCHAR(100),
-    details JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX idx_audit_created ON public.audit_logs(created_at DESC);
-```
+#### 9. `public.profiles` & `public.user_profiles`
+Staff identities, branch assignments, and roles (`super_admin`, `branch_manager`, `cashier`). Aliased via `public.user_profiles` view for seamless queries.
 
 ---
 
-### 4.2 Local Browser Storage: IndexedDB v3 (9 Stores)
+### 4.2 Local Browser Storage: IndexedDB v3
 
 Database Name: `rr_pos_inventory_db`  
-Current Version: `3`
+Version: `3`
 
 | Store Name | Key Path | Secondary Indexes | Data Model / Purpose |
 | :--- | :--- | :--- | :--- |
-| `branches` | `id` | None | Active branches list and practice state flags. |
-| `categories` | `id` | None | Product category definitions, display order, and color badges. |
-| `products` | `id` | `by-category` (`categoryId`) | Catalog items, prices, barcodes, and SKUs. |
-| `branch_stock` | `id` (`${branchId}_${productId}`) | `by-branch` (`branchId`), `by-product` (`productId`) | Local quantity balances and low stock reorder thresholds. |
-| `transactions` | `id` | `by-branch` (`branchId`), `by-created-at` (`createdAt`) | Completed in-store sales records. |
-| `transfers` | `id` | `by-source` (`sourceBranchId`), `by-target` (`targetBranchId`), `by-status` (`status`) | Inter-branch shipments in transit or received. |
-| `stock_movements` | `id` | `by-branch` (`branchId`), `by-product` (`productId`) | Detailed inventory delta logs and balance history. |
-| `audit_logs` | `id` | `by-branch`, `by-user`, `by-created-at`, `by-action` | Local copy of compliance and security activities. |
-| `offline_sync_queue` | `id` | `by-status` (`status`) | Uncommitted offline sales awaiting connection restoration. |
+| `branches` | `id` | None | Active branches list and details. |
+| `categories` | `id` | None | Categories sorted by display order. |
+| `products` | `id` | `by-category` | Master catalog items, prices, barcodes, SKUs. |
+| `branch_stock` | `id` (`${branchId}_${productId}`) | `by-branch`, `by-product` | Local stock balances and thresholds. |
+| `transactions` | `id` | `by-branch`, `by-created-at` | Completed retail sales records. |
+| `transfers` | `id` | `by-source`, `by-target`, `by-status` | Inter-branch shipments, items, and discrepancy notes. |
+| `stock_movements` | `id` | `by-branch`, `by-product` | Sequenced inventory ledger history. |
+| `audit_logs` | `id` | `by-branch`, `by-user`, `by-created-at` | Security, staff, and system event log. |
+| `offline_sync_queue` | `id` | `by-status` | Uncommitted offline orders awaiting reconnection. |
 
 ---
 
 ## 5. In-Depth Feature Mechanics & State Machines
 
-### 5.1 Point of Sale (POS) & Checkout Engine
-
-The POS module (`POSScreen.tsx`) is optimized for cashier speed, touch efficiency, and rock-solid math precision.
-
-#### Mathematical Calculation Logic (`cartCalculations.ts`):
-```typescript
-const subtotal = round2(items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0));
-let discountAmount = 0;
-if (discount && discount.value > 0) {
-  if (discount.type === "percentage") {
-    discountAmount = round2(subtotal * (discount.value / 100));
-  } else {
-    discountAmount = round2(discount.value);
-  }
-}
-discountAmount = Math.min(discountAmount, subtotal); // Non-negative constraint
-const taxableAmount = round2(subtotal - discountAmount);
-const taxAmount = round2(taxableAmount * taxRate);
-const grandTotal = round2(taxableAmount + taxAmount);
-const changeAmount = amountTendered >= grandTotal ? round2(amountTendered - grandTotal) : 0;
-```
-* **Rounding Invariant:** Every step uses `Math.round((num + Number.EPSILON) * 100) / 100` to prevent IEEE 754 floating-point inaccuracies.
-* **Discounts Supported:** Percentage discounts, Fixed monetary discounts, Senior Citizen / PWD tax exemptions.
-* **Payment Tenders:** Cash (dynamic keypad, presets ₱100/200/500/1000/Exact, change calculation), Card (approval code), E-Wallet (GCash & Maya reference numbers).
-* **Receipt Output:** Thermal layout (58mm / 80mm) with business header, receipt number, timestamp, cashier name, line items, breakdown, and change.
+### 5.1 Point of Sale (POS) & Checkout Engine (`/pos`)
+Available to: `cashier`, `branch_manager`, `super_admin`.
+- **Barcode & SKU Search:** Instant lookup and live quantity display.
+- **Cart Calculations (`cartCalculations.ts`):** Exact rounding (`Math.round((num + Number.EPSILON) * 100) / 100`), Senior Citizen / PWD 20% tax-exempt discounts, custom percentage, and fixed discounts.
+- **Payment Tender Modal:** Quick-tender buttons (₱100, ₱200, ₱500, ₱1000, Exact), change calculation, Card reference logging, and GCash/Maya e-wallet approval numbers.
+- **Thermal Receipt Printing:** 58mm / 80mm ESC/POS formatted thermal layout.
+- **Offline Resilience:** Seamlessly queues transactions when disconnected.
 
 ---
 
-### 5.2 Multi-Branch Inventory & Stock Control
-
-The inventory engine maintains independent stock balances across physical store locations with sequenced movement history.
-
-#### Stock Movement Ledger (`auditMovement.ts`):
-Every quantity modification generates an audited `StockMovementRecord`. Supported movement types:
-1. `INITIAL_STOCK`: Initial stock recorded during product onboarding.
-2. `Sale`: Decrements quantity upon POS checkout.
-3. `Restock`: Increments quantity from vendor deliveries.
-4. `Waste/Spoilage`: Decrements damaged or expired inventory.
-5. `Gift/Promo`: Decrements items given for promotional use.
-6. `Inter-Branch Transfer` (`TRANSFER_OUT` / `TRANSFER_IN`): Decrements source branch and increments destination branch.
-
-#### Invariants & Constraints:
-* **Negative Stock Prevention:** If `currentStock + delta < 0`, the operation is aborted with `Insufficient stock`.
-* **Audit Immutability:** Stock movements are insert-only; records are never mutated or deleted.
+### 5.2 Multi-Branch Inventory & Stock Control (`/inventory`)
+Available to: `branch_manager`, `super_admin`.
+- **Stock Grid:** Displays branch-specific stock levels, search filter, and category filters.
+- **Stock Adjustments:** Restock, Spoilage, Damage, Promotion with mandatory audit trail.
+- **Catalog Creation:** Directly embed Category and Product creation modals.
 
 ---
 
 ### 5.3 Branch Category & Product Creation with Catalog Integrity Logic
-
-In the Branch Inventory screen, store managers can directly create **Categories** and **Products** through dedicated modals:
-
-#### 1. Add Category Modal (`AddCategoryModal.tsx`):
-* **Inputs:** Category Name, URL Slug, Display Order (integer sorting), and Color Badge.
-* **Ordering:** Display order guarantees customized POS catalog layout priority.
-
-#### 2. Add Product Modal (`AddProductModal.tsx`):
-* **Inputs:** Product Name, Category, SKU, Barcode, Selling Price, Cost Price, Initial Stock Quantity (for current branch), and Reorder Point.
-
-#### 3. Catalog Integrity Logic (`AppContext.tsx`):
-When a product is saved, the application executes a 4-step atomic integrity workflow:
-1. **Master Catalog Record:** Inserts the product into `public.products` (Supabase and local IndexedDB).
-2. **Active Branch Stock:** Inserts an active `branch_stock` record for the current branch with the specified `initialStock`.
-3. **Enterprise Zero-Stock Provisioning:** Queries all other registered branches in the enterprise and inserts `branch_stock` records with `quantity: 0`. This guarantees that subsequent inter-branch transfer handshakes across terminals immediately find the item record.
-4. **Immutable Audit Ledger:** Inserts a stock movement in `public.stock_movements`:
-   ```typescript
-   {
-     branchId: currentBranch.id,
-     productId: newProduct.id,
-     movementType: "INITIAL_STOCK",
-     quantityDelta: initialStock,
-     balanceAfter: initialStock,
-     createdBy: currentUser.id,
-     notes: "Initial inventory allocation upon product creation"
-   }
-   ```
+Store managers and admins can create items on the fly:
+1. **`+ Add Category` Modal (`AddCategoryModal.tsx`):**
+   - Fields: Name, URL Slug, Display Order (integer sorting for POS buttons).
+2. **`+ Add Product` Modal (`AddProductModal.tsx`):**
+   - Fields: Product Name, Category, SKU/Barcode, Selling Price, Cost Price, Initial Stock Quantity (for active branch), and Reorder Point.
+3. **Atomic 4-Step Catalog Integrity Logic (`AppContext.tsx`):**
+   - Step 1: Insert master record into `public.products`.
+   - Step 2: Insert `branch_stock` record for current branch with specified `initialStock`.
+   - Step 3: Insert zero-stock `branch_stock` (`quantity: 0`) for **all other registered branches** so transfer handshakes never fail on unrecognized SKUs.
+   - Step 4: Record an audit movement in `public.stock_movements` with `movement_type: 'INITIAL_STOCK'`.
 
 ---
 
-### 5.4 Inter-Branch Transfer Protocol & State Machine
-
-The transfer workflow (`transferStateMachine.ts`) prevents inventory loss during transit across locations:
+### 5.4 Two-Stage Handshake Transfers (`/transfers`)
+Available to: `branch_manager`, `super_admin`.
 
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING: Transfer Created
-    PENDING --> IN_TRANSIT: Source Branch Dispatches
+    PENDING --> IN_TRANSIT: Stage 1: Source Branch Dispatches
     note right of IN_TRANSIT
-        Stock decremented from Source Branch.
-        Target Branch stock remains unchanged.
+        Stock deducted immediately from Source Branch.
+        Destination branch stock unchanged.
+        Status set to IN_TRANSIT.
     end note
-    IN_TRANSIT --> RECEIVED: Target Branch Confirms Receipt
+    IN_TRANSIT --> RECEIVED: Stage 2: Destination Branch Confirms Receipt
     note right of RECEIVED
-        Physical count verified.
-        Intact stock credited to Target Branch.
-        Discrepancy notes logged if mismatch occurs.
+        Physical count entered (quantityReceived).
+        Target branch credited with intact items.
+        If received != sent: hasDiscrepancy = true
+        Mandatory explanation note required.
     end note
-    PENDING --> CANCELLED: Cancelled before dispatch
-    IN_TRANSIT --> CANCELLED: Emergency cancellation (Admin)
 ```
 
-#### Protocol Stages:
-1. **Dispatch Transfer (`dispatchTransfer`):**
-   * Validates `sourceBranchId !== targetBranchId`.
-   * Verifies source branch has sufficient stock.
-   * **Deducts items immediately from source inventory** to prevent double-allocation.
-   * Creates transfer record in `IN_TRANSIT` status.
-2. **Confirm Transfer Receipt (`confirmTransferReceipt`):**
-   * Validates transfer is currently `IN_TRANSIT`.
-   * Receiving manager inputs physical count (`quantityReceived`).
-   * **Credits confirmed received quantity to target branch inventory**.
-   * If `quantityReceived !== quantitySent`, flags discrepancy and saves discrepancy notes for audit review.
+- **Stage 1 (Dispatch):** Source branch chooses target branch and quantities. Stock is immediately deducted from the source branch and status becomes `IN_TRANSIT`.
+- **Stage 2 (Receipt Verification):** Destination branch opens pending delivery, enters physical count (`quantityReceived`).
+- **Discrepancy Handling:** If `quantityReceived !== quantitySent`, sets `hasDiscrepancy: true`, computes shortage/overage delta, and enforces a **mandatory text note** (e.g., "3 bottles shattered during transit").
 
 ---
 
-### 5.5 Granular Per-Store Practice Mode (Sandbox)
-
-Practice Mode provides a risk-free environment for training cashiers and store supervisors. It features **Cloud-Flagged Inter-Branch Practice Mode**, allowing multi-terminal transfer training while strictly isolating live production inventory.
-
-#### Key Mechanics:
-* **Store Granularity:** Admin toggles specific stores into practice mode (`branches.is_practice_mode`).
-* **Inter-Branch Sandbox Transfers:** Staff can execute handshakes between two practice branches without polluting live stock.
-* **Cross-Contamination Prevention:** Rejects transfers between a live branch and a practice branch.
-* **Data Purging:** Switching off practice mode purges all training records from IndexedDB and refreshes cloud data.
-
----
-
-### 5.6 Dynamic Branch Management (CRUD) & Validation
-
-Super Admins can create, edit, activate/deactivate, and delete branches directly from the Owner Audit Center.
-* **Validation:** Branch code uniqueness check, name requirement, phone format check.
-* **Cascading Safety:** Prevents accidental deletion of branches with active transaction or stock records.
+### 5.5 Direct In-App Staff Provisioning (`/staff`)
+Available strictly to: `super_admin`.
+- **Staff List Table:** Displays Full Name, Email/Username, Role, Assigned Branch, Active Status, and Actions.
+- **In-App Creation Modal (`AddStaffModal`):**
+  - Fields: Full Name, Login Email/Username, Password (min 6 characters), Assigned Branch, Assigned Role (`cashier` or `branch_manager`).
+  - Calls `supabase.auth.signUp()` with metadata, directly followed by profile upsert into `public.profiles`.
+  - Zero external dependencies: no Edge Functions and no external email provider required.
+- **Staff Maintenance:** Super admins can switch branch assignments or deactivate credentials instantly.
 
 ---
 
-### 5.7 Authentication, Edge Provisioning & Staff Management
+### 5.6 Owner Audit Center (`/audit`)
+Available strictly to: `super_admin`.
+- **Transfer Discrepancy Log:** Displays all transfers where `hasDiscrepancy: true`, showing Source Branch, Destination Branch, Dispatcher, Receiver, Sent vs Received Delta, Timestamp, and the receiving manager's explanation note.
+- **Stock Movement Ledger:** Complete breadcrumb trail of `stock_movements` (`INITIAL_STOCK`, `Sale`, `Restock`, `Waste/Spoilage`, `TRANSFER_OUT`, `TRANSFER_IN`).
+- **Transaction Ledger:** Historical list of completed sales with receipt numbers, tender breakdown (Cash/Card/E-Wallet), applied discounts, and `offline_synced` indicators.
 
-The staff management system provides enterprise onboarding via Supabase Edge Functions:
-* **`invite-user` Edge Function:** Securely invites staff, sets role and branch assignment, and generates invite links with Resend email delivery.
-* **`delete-user` Edge Function:** Securely deletes staff profiles and invalidates Supabase Auth identities. Protects root owner (`riveroalecjoseph@gmail.com`) and prevents self-deletion.
-* **First-Login Security:** Prompts new users with `SetPasswordModal.tsx` on initial login.
+---
+
+### 5.7 Multi-Branch Creation & Zero-Stock Priming
+- Triggerable via **`+ Add Branch`** modal in the header or management views.
+- Fields: Branch Name, Code/Prefix, Address, Phone Number.
+- **Zero-Stock Priming:** Upon creation, immediately inserts `quantity: 0` records into `branch_stock` for all catalog products across Supabase and IndexedDB.
+- Immediately updates all branch selectors across the app.
 
 ---
 
 ### 5.8 Offline Engine, Staging Queue & Auto-Sync Engine
-
-* **Transaction Staging (`syncQueue.ts`):** When offline during checkout, transactions are stored in `offline_sync_queue` with a unique idempotency key (`idemp_${branchId}_${timestamp}_${suffix}`).
-* **Automatic Reconnection Flush:** Listens to browser `online` events and flushes pending orders in FIFO sequence to Supabase.
-
----
-
-### 5.9 Real-Time Audit Trail & Compliance Monitoring
-
-Maintains 14 tracked audit actions in `public.audit_logs`:
-* Authentication: `AUTH_LOGIN`, `AUTH_LOGOUT`, `AUTH_PASSWORD_CHANGE`.
-* Sales: `POS_SALE`.
-* Inventory: `INVENTORY_ADJUSTMENT`, `INVENTORY_PRODUCT_CREATED`, `INVENTORY_PRODUCT_UPDATED`, `INVENTORY_CATEGORY_CREATED`.
-* Transfers: `TRANSFER_DISPATCHED`, `TRANSFER_RECEIVED`.
-* Administration: `STAFF_INVITED`, `STAFF_ROLE_UPDATED`, `BRANCH_SWITCH`, `SYSTEM_CONFIG`.
+- Automatically detects network status (`window.addEventListener('online' | 'offline')`).
+- Offline orders are persisted to IndexedDB store `offline_sync_queue` with unique collision-resistant idempotency keys (`idemp_${branchId}_${timestamp}_${random}`).
+- Local stock is updated optimistically so cashiers can continue uninterrupted.
+- On reconnection, the sync engine flushes queued orders to Supabase in FIFO order.
 
 ---
 
-### 5.10 Business Analytics & Financial Reporting
+### 5.9 Role-Based Access Control (RBAC) & 5 Streamlined Views
 
-Aggregates operational metrics in `AnalyticsModal.tsx`:
-* Gross Revenue, Net Profit, Average Order Value (AOV).
-* Tender Mix (Cash vs Card vs E-Wallet).
-* Top Selling Items by units and gross revenue.
-* Practice transactions automatically excluded from financial metrics.
+| Role | Permitted Views | Branch Scope | Permissions |
+| :--- | :--- | :--- | :--- |
+| **Cashier (`cashier`)** | `/pos` | Assigned Branch | Read-only catalog, ring up sales, print thermal receipts, queue offline sales. |
+| **Branch Manager (`branch_manager`)** | `/pos`, `/inventory`, `/transfers` | Assigned Branch | POS checkout, stock adjustments, product/category creation, dispatch & confirm transfers. |
+| **Super Admin (`super_admin`)** | `/pos`, `/inventory`, `/transfers`, `/staff`, `/audit` | Global Network (Store Switcher) | Full access across all 5 views, branch creation, direct staff provisioning, discrepancy auditing. |
 
 ---
 
-### 5.11 Role-Based Access Control (RBAC) & Screen Access Policy
-
-The platform enforces strict role-based screen routing and permission gating across both client UI and database RLS:
-
-| Role | Scope | Nav Tabs Permitted | Catalog & Stock Access | Inter-Branch Transfers | Owner Audit Center |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Cashier (`cashier`)** | Single Store | **POS Screen only** | Read-only catalog, ring up sales, print receipts | **Blocked** | **Blocked** |
-| **Branch Manager (`branch_manager` / `inventory_manager`)** | Single Store | **POS, Branch Inventory** | Add categories, create products, adjust stock | **Dispatch & Receive Handshake** | **Blocked** |
-| **Super Admin / Owner (`super_admin`)** | **Global Network** | **POS, Inventory, Admin Audit Center** | Master catalog, all-store stock, low-stock triggers | **Global transfer oversight** | **Full Audit Center, Branch Switcher & Staff Roster** |
-
-#### Enforcement Mechanics:
-* **`App.tsx` (`effectiveTab`):** If a cashier or branch manager attempts to switch to an unauthorized tab, the router forces their active tab back to `"pos"`.
-* **`Navbar.tsx` & `BottomNav.tsx`:** Conditionally render navigation links based on role (`isSuperAdmin`, `isBranchManager`).
-* **Owner Audit Center (`AdminScreen.tsx`):**
-  * **Discrepancy Notes Tab:** Transferred item audit with sent vs received comparisons.
-  * **Stock Movement Ledger:** Sequenced, immutable log of all inventory movements.
-  * **Sales History:** Historical receipts, cashier attribution, and tender breakdowns.
-  * **Staff & Branch Management:** User provisioning and branch management.
+### 5.10 Pruning of Dormant Enterprise Features
+To preserve performance, eliminate clutter, and optimize client delivery:
+- **Practice Mode Removed:** Purged practice mode banners, toggle switches, and sandbox stores.
+- **Analytics Dashboard Removed:** Purged profit margin calculations, AOV charts, and financial graph overlays.
+- **Edge Functions & Resend Removed:** Replaced external `invite-user` and `delete-user` Edge Functions and Resend API dependencies with direct Supabase Auth client operations.
+- **Retained Core Telemetry:** Active Store Switcher and Network & Offline Queue Sync Indicator remain prominent in the top bar.
 
 ---
 
@@ -543,28 +369,22 @@ The platform enforces strict role-based screen routing and permission gating acr
 RR_POS_Backup/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml                        # Dual CI/CD: Windows Tauri desktop installer + GitHub Pages web deploy
+│       └── deploy.yml                        # Dual CI/CD: Windows Desktop Installer + GitHub Pages Web Deploy
 ├── supabase/
-│   ├── functions/
-│   │   ├── _shared/cors.ts                   # Standardized CORS headers
-│   │   ├── delete-user/index.ts              # Edge function for staff deletion & session revocation
-│   │   └── invite-user/index.ts              # Edge function for staff invitations & Resend API dispatch
-│   ├── migrations/
-│   │   ├── 20260922000001_initial_schema.sql             # Base schema: branches, profiles, catalog, stock, transfers, RLS
-│   │   ├── 20260927000001_inter_branch_practice_mode.sql # Sandbox isolation: practice_branch_stock, trigger boundary, purge
-│   │   ├── 20260927000002_enhance_rbac_resolution.sql    # Security definer RLS functions & profiles INSERT/DELETE policies
-│   │   └── 20260928000001_catalog_integrity_and_rbac.sql # display_order, INITIAL_STOCK movement type, branch_manager RLS
-│   └── seed.sql                              # Database seed fixtures
+│   └── migrations/
+│       ├── 20260922000001_initial_schema.sql             # Base schema: branches, profiles, catalog, stock, transfers, RLS
+│       ├── 20260927000002_enhance_rbac_resolution.sql    # Security definer RLS functions & profiles INSERT/DELETE policies
+│       ├── 20260928000001_catalog_integrity_and_rbac.sql # display_order, INITIAL_STOCK movement type, branch_manager RLS
+│       └── 20260928000002_streamlined_workstation.sql    # has_discrepancy column, user_profiles view & admin RLS
 ├── src/
 │   ├── components/
 │   │   ├── common/
 │   │   │   ├── AppLoadingScreen.tsx          # Branded dark-slate loading screen for seamless session verification
-│   │   │   ├── PracticeModeBanner.tsx        # Sandbox warning banner for practice-mode branches
 │   │   │   ├── SetPasswordModal.tsx          # Voluntary password change modal
 │   │   │   └── SyncStatusBanner.tsx          # Real-time connection & offline sync queue status bar
 │   │   └── layout/
-│   │       ├── BottomNav.tsx                 # Mobile touch navigation bar
-│   │       └── Navbar.tsx                    # Desktop header with store switcher, role badge, and navigation tabs
+│   │       ├── BottomNav.tsx                 # Mobile touch navigation bar (5 streamlined views)
+│   │       └── Navbar.tsx                    # Desktop header with store switcher, sync indicator, and 5 views
 │   ├── context/
 │   │   └── AppContext.tsx                    # Central state engine: Supabase, IndexedDB, Catalog Integrity, and Sync
 │   ├── core/
@@ -574,45 +394,47 @@ RR_POS_Backup/
 │   │   ├── inventory/
 │   │   │   ├── auditMovement.ts              # Pure logic for stock movements (including INITIAL_STOCK)
 │   │   │   ├── auditMovement.test.ts         # Unit tests verifying stock delta invariants
-│   │   │   ├── transferStateMachine.ts       # Pure logic for inter-branch transfer lifecycle
-│   │   │   └── transferStateMachine.test.ts  # Unit tests for transfer validation and sandbox boundaries
+│   │   │   ├── transferStateMachine.ts       # Pure logic for two-stage transfer lifecycle & discrepancy flags
+│   │   │   └── transferStateMachine.test.ts  # Unit tests for transfer validation and discrepancy math
 │   │   ├── offline/
 │   │   │   ├── syncQueue.ts                  # Pure logic for offline queueing and FIFO synchronization
 │   │   │   └── syncQueue.test.ts             # Unit tests for idempotency keys and error retry handling
-│   │   ├── pos/
-│   │   │   ├── cartCalculations.ts           # Pure math for discounts, tax rates, subtotals, and change
-│   │   │   └── cartCalculations.test.ts      # Unit tests for rounding precision and discount bounds
-│   │   ├── practiceMode.ts                   # Storage controller for per-store practice mode sandbox
-│   │   └── practiceMode.test.ts              # Unit tests verifying branch isolation and toggle behavior
+│   │   └── pos/
+│   │       ├── cartCalculations.ts           # Pure math for discounts, tax rates, subtotals, and change
+│   │       └── cartCalculations.test.ts      # Unit tests for rounding precision and discount bounds
 │   ├── features/
-│   │   ├── admin/
-│   │   │   └── AdminScreen.tsx               # Owner Audit Center: Discrepancy Notes, Stock Ledger, Sales History, Staff, Branches
-│   │   ├── analytics/
-│   │   │   └── AnalyticsModal.tsx            # Financial analytics dialog: revenue, margin, top products, payment mix
+│   │   ├── audit/
+│   │   │   └── AuditScreen.tsx               # Owner Audit Center: Discrepancy Log, Stock Ledger, Sales Ledger
 │   │   ├── auth/
-│   │   │   └── LoginPage.tsx                 # Authentication interface: login, password recovery, invite setup
+│   │   │   └── LoginPage.tsx                 # Authentication interface: login & password recovery
+│   │   ├── branches/
+│   │   │   └── AddBranchModal.tsx            # Admin modal for creating branches and zero-stock priming
 │   │   ├── inventory/
-│   │   │   ├── AddCategoryModal.tsx          # Dedicated modal for category creation (name, slug, display order, color)
-│   │   │   ├── AddProductModal.tsx           # Product creation modal with SKU, barcode, initial branch stock, reorder point
+│   │   │   ├── AddCategoryModal.tsx          # Category creation modal (name, slug, display order)
+│   │   │   ├── AddProductModal.tsx           # Product creation modal with catalog integrity logic
 │   │   │   ├── CategoryManagementModal.tsx   # Category list and order editor
 │   │   │   ├── EditProductModal.tsx          # Product updater
-│   │   │   ├── InventoryScreen.tsx           # Main inventory screen: stock tables, transfer tabs, movement logs
+│   │   │   ├── InventoryScreen.tsx           # Branch inventory screen: stock tables, search, filters
 │   │   │   ├── StockAdjustmentModal.tsx      # Waste, spoilage, restock, and correction modal
-│   │   │   ├── TransferDispatchModal.tsx     # Inter-branch transfer dispatch dialog
-│   │   │   └── TransferReceiptModal.tsx      # Inter-branch transfer receipt and discrepancy verification dialog
-│   │   └── pos/
-│   │       ├── DiscountModal.tsx             # Ticket-level and line-item discount selector
-│   │       ├── PaymentModal.tsx              # Multi-tender checkout modal (Cash, Card, GCash, Maya)
-│   │       ├── POSScreen.tsx                 # Cashier checkout interface with product grid & barcode search
-│   │       └── ThermalReceiptModal.tsx       # 58mm/80mm thermal receipt printer view and download modal
+│   │   │   ├── TransferDispatchModal.tsx     # Stage 1: Inter-branch transfer dispatch dialog
+│   │   │   └── TransferReceiptModal.tsx      # Stage 2: Handshake receipt & discrepancy verification dialog
+│   │   ├── pos/
+│   │   │   ├── DiscountModal.tsx             # Ticket-level and line-item discount selector
+│   │   │   ├── PaymentModal.tsx              # Multi-tender checkout modal (Cash, Card, GCash, Maya)
+│   │   │   ├── POSScreen.tsx                 # Cashier checkout interface with product grid & barcode search
+│   │   │   └── ThermalReceiptModal.tsx       # 58mm/80mm thermal receipt printer view and download modal
+│   │   ├── staff/
+│   │   │   └── StaffScreen.tsx               # Direct in-app staff provisioning & management screen
+│   │   └── transfers/
+│   │       └── TransfersScreen.tsx           # Dedicated two-stage inter-branch transfers screen
 │   ├── lib/
 │   │   ├── db.ts                             # Native IndexedDB wrapper (version 3) with schema migration
 │   │   └── supabase.ts                       # Supabase client singleton & configuration check
 │   ├── types/
-│   │   └── index.ts                          # Central TypeScript interfaces, DTOs, and union types
+│   │   └── index.ts                          # Central TypeScript interfaces: AppTab, TransferRecord, etc.
 │   ├── utils/
 │   │   └── platform.ts                       # Platform detection (isDesktop)
-│   ├── App.tsx                               # Main application router and role-gated navigation controller
+│   ├── App.tsx                               # Router enforcing 5 streamlined views & role-gated navigation
 │   ├── index.css                             # CSS design system and tokens
 │   └── main.tsx                              # React DOM entrypoint
 ├── src-tauri/
@@ -634,15 +456,9 @@ RR_POS_Backup/
 
 ## 7. Automated Testing Suite & Verification Matrix
 
-The test suite runs via Vitest (`npm test`) and validates critical business logic with 100% pass rate across 6 test suites:
+The test suite runs via Vitest (`npm test`) and validates critical business logic with 100% pass rate across 6 test suites (36 tests):
 
 ```text
- ✓ src/core/practiceMode.test.ts (4 tests)
-   - retrieves empty practice branches by default
-   - toggles a branch into and out of practice mode
-   - saves and restores multiple practice branch IDs
-   - correctly identifies whether a branch is in practice mode
-
  ✓ src/core/pos/cartCalculations.test.ts (5 tests)
    - computes basic cart subtotals correctly
    - applies percentage-based discounts with rounding
@@ -679,11 +495,8 @@ The test suite runs via Vitest (`npm test`) and validates critical business logi
    - confirms receipt and credits destination branch inventory
    - flags discrepancies when received quantity differs from sent
    - rejects confirmation on invalid transfer states
-   - successfully dispatches between two branches in practice mode
-   - rejects dispatch when live branch attempts transfer to practice branch
-   - rejects dispatch when practice branch attempts transfer to live branch
-   - confirms receipt between matching practice branches
-   - rejects receipt confirmation when branch practice modes mismatch
+   - handles multiple items in single transfer handshake
+   - computes discrepancy delta correctly
 
 Test Files: 6 passed (6)
 Tests:      36 passed (36)
@@ -698,14 +511,6 @@ Tests:      36 passed (36)
 # Supabase Cloud Project Configuration
 VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# Secret Service Role Key (Supabase Edge Function runtime secrets - NEVER expose in client bundles)
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# Resend API Configuration (For transactional invitation emails)
-VITE_RESEND_API_KEY=re_your_resend_api_key_here
-RESEND_API_KEY=re_your_resend_api_key_here
-VITE_RESEND_FROM_EMAIL=POINVTS Workstation <onboarding@resend.dev>
 ```
 
 ### Local Development Commands:
@@ -735,16 +540,13 @@ npm run desktop:dev
 
 | Scenario | System Behavior & Remediation |
 | :--- | :--- |
-| **Sudden Internet Loss During Checkout** | POS detects request failure, creates an `OfflineOrderRecord` with collision-resistant key, stores it in IndexedDB, and updates local stock. UI shows "Offline: Queued for Sync". Auto-flushes when back online. |
+| **Sudden Internet Loss During Checkout** | POS creates an `OfflineOrderRecord` with collision-resistant key, stores it in IndexedDB, and updates local stock. UI shows "Offline: Queued for Sync". Auto-flushes when back online. |
 | **Cashier Scans Non-Existent Barcode** | POS displays a non-blocking toast warning: "Product with barcode [code] not found in catalog." Sound feedback triggers without clearing cart. |
-| **Transfer Discrepancy (Damaged in Transit)** | Receiving manager enters the actual intact count. The system credits only the intact count, marks the transfer as `RECEIVED`, sets `hasDiscrepancy: true`, and logs the difference in the discrepancy audit log. |
-| **Cashier Attempts Overselling** | Stock check prevents cart submission if requested quantity exceeds available stock, showing an explicit insufficient stock notification. |
-| **Staff Member Leaves Company** | Super Admin navigates to Admin $\to$ Staff Roster and selects Delete User. `supabase/functions/delete-user` purges their profile from `public.profiles` and deletes their Supabase Auth user record, invalidating all sessions and refresh tokens. |
-| **Attempted Deletion of Primary Owner Account** | `supabase/functions/delete-user` checks target email against `riveroalecjoseph@gmail.com`. Rejects request with `403 Forbidden` ("The primary Super Admin account cannot be deleted."), ensuring permanent owner continuity. |
-| **Self-Account Deletion by Active Admin** | `supabase/functions/delete-user` cross-references caller token with target user ID. Rejects request with `400 Bad Request` ("You cannot delete your own active account."), preventing accidental administrator lockout. |
-| **Unauthorized Screen Navigation** | `App.tsx` forces unauthorized tabs back to `"pos"` for cashiers and branch managers, preventing URL tampering or unauthorized screen access. |
-| **Branch Selection Infinite Re-Render Loop** | `AppContext.tsx` guards branch updates with reference stability (`if (found && found.id === prev.id) return prev;`) and memoizes effects to `[currentBranch?.id]`. |
-| **Practice Mode Data Leakage** | Practice sales are tagged at origin. Toggling practice mode off runs a sweeping multi-store purge in IndexedDB and re-syncs authentic data from Supabase PostgreSQL. |
+| **Transfer Discrepancy (Damaged in Transit)** | Receiving manager enters actual intact count. The system credits intact count to target branch, sets `hasDiscrepancy: true`, and requires an explanation note for the Owner Audit Center. |
+| **Cashier Attempts Overselling** | Stock check prevents checkout if requested quantity exceeds available stock, showing an explicit insufficient stock notification. |
+| **Staff Member Role or Branch Change** | Super Admin updates user profile directly from `/staff`. Changes take effect instantly in Supabase and sync to local IndexedDB. |
+| **Unauthorized Screen Navigation** | `App.tsx` forces unauthorized tabs back to `/pos` for cashiers and branch managers, preventing URL tampering or unauthorized screen access. |
+| **Catalog Recognition on Transfers** | Creating any product initializes `branch_stock` with `quantity: 0` for all other branches, guaranteeing incoming transfer receipts never encounter missing SKU errors. |
 
 ---
 
@@ -758,20 +560,29 @@ The RR POS & Inventory workstation supports native desktop packaging using **Tau
 * **Context Menu Lockout:** Right-click context menus and developer inspection tools are blocked in release builds (`src-tauri/src/main.rs`).
 
 ### 10.2 Dual CI/CD Pipeline (`.github/workflows/deploy.yml`)
-The GitHub Actions workflow automates both desktop and web production distributions on push to `main`:
+The GitHub Actions workflow automates both desktop installer building and web production deployment on push to `main`:
 
 ```yaml
-name: Build & Deploy RR POS
+name: Build Desktop & Web Workstation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
 
 jobs:
-  desktop-build:
-    name: Build Desktop Installer (Windows)
+  build-desktop:
+    name: Build Windows Desktop Installer
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -779,35 +590,20 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
-        run: npm ci
-      - name: Build Tauri Desktop App
-        uses: tauri-apps/tauri-action@v0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: v__VERSION__
-          releaseName: 'RR POS Workstation v__VERSION__'
-          releaseBody: 'Production native installer for RR POS & Inventory Workstation.'
-          releaseDraft: false
-          prerelease: false
-      - name: Upload Windows Installer Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-installer-windows
-          path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
+          name: RR-POS-Desktop-Installer
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: warn
 
-  web-deploy:
-    name: Deploy Web Application (GitHub Pages)
+  build-and-deploy-web:
+    name: Deploy Web App to GitHub Pages
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -817,16 +613,11 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
-      - name: Build web application
-        run: npm run build
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
         with:
-          path: 'dist'
+          path: dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

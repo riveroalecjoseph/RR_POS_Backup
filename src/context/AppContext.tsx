@@ -22,6 +22,7 @@ import {
   CreateProductDTO,
   UpdateProductDTO,
   AuditLogEntry,
+  AppTab,
 } from "../types";
 import {
   getDatabase,
@@ -87,8 +88,8 @@ interface AppContextType {
   purgePracticeData: (targetBranchId?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Active Navigation Tab
-  activeTab: "pos" | "inventory" | "admin";
-  setActiveTab: (tab: "pos" | "inventory" | "admin") => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
 
   // Branches
   branches: Branch[];
@@ -249,11 +250,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [currentBranch, practiceBranchIds]);
 
   // Active navigation tab (persists across reloads)
-  const [activeTab, setActiveTabState] = useState<"pos" | "inventory" | "admin">(
+  const [activeTab, setActiveTabState] = useState<AppTab>(
     () => {
       try {
-        const saved = localStorage.getItem(CACHED_TAB_KEY);
-        if (saved === "pos" || saved === "inventory" || saved === "admin") {
+        const saved = localStorage.getItem(CACHED_TAB_KEY) as AppTab;
+        if (saved && ["pos", "inventory", "transfers", "staff", "audit"].includes(saved)) {
           return saved;
         }
       } catch {}
@@ -261,7 +262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     },
   );
 
-  const setActiveTab = useCallback((tab: "pos" | "inventory" | "admin") => {
+  const setActiveTab = useCallback((tab: AppTab) => {
     setActiveTabState(tab);
     try {
       localStorage.setItem(CACHED_TAB_KEY, tab);
@@ -271,8 +272,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   // Update default tab based on user role upon login (respecting RBAC)
   useEffect(() => {
     if (currentUser) {
-      if (currentUser.role === "inventory_manager") {
-        setActiveTabState("inventory");
+      if (currentUser.role === "branch_manager" || currentUser.role === "inventory_manager") {
+        if (activeTab === "staff" || activeTab === "audit") {
+          setActiveTabState("pos");
+        }
       } else if (currentUser.role === "cashier") {
         setActiveTabState("pos");
       }
@@ -2120,6 +2123,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       await db.put("branches", newBranch);
       setBranches((prev) => [...prev.filter((b) => b.id !== newBranch.id), newBranch]);
 
+      // Automatically initialize branch_stock rows with quantity: 0 for all existing catalog products so the new store is instantly primed for transfers
+      const initialBranchStock: BranchStockItem[] = [];
+      for (const prod of products) {
+        const stockKey = `${newBranch.id}_${prod.id}`;
+        const stockItem: BranchStockItem = {
+          id: stockKey,
+          branchId: newBranch.id,
+          productId: prod.id,
+          product: prod,
+          quantity: 0,
+          lowStockThreshold: 10,
+          updatedAt: new Date().toISOString(),
+        };
+        await db.put("branch_stock", stockItem);
+        initialBranchStock.push(stockItem);
+
+        if (!isPracticeMode && isLiveSupabaseConfigured && !isLocalFallback) {
+          try {
+            await supabase.from("branch_stock").insert({
+              branch_id: newBranch.id,
+              product_id: prod.id,
+              quantity: 0,
+              low_stock_threshold: 10,
+            });
+          } catch {
+            // benign insert error fallback
+          }
+        }
+      }
+
+      if (initialBranchStock.length > 0) {
+        setAllBranchStock((prev) => [...prev, ...initialBranchStock]);
+      }
+
       if (!currentBranch) {
         setCurrentBranch(newBranch);
       }
@@ -2593,6 +2630,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("transfers")
           .update({
             status: "RECEIVED",
+            has_discrepancy: hasDiscrepancy,
             discrepancy_notes: discrepancyNotes || null,
             received_by:
               currentUser?.id && !currentUser.id.startsWith("usr-")
@@ -2693,6 +2731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       existing.receivedByName = currentUser?.fullName || "Staff";
       existing.receivedAt = new Date().toISOString();
       existing.discrepancyNotes = discrepancyNotes;
+      existing.hasDiscrepancy = hasDiscrepancy;
 
       for (const rItem of receiptItems) {
         const it = existing.items.find((i) => i.productId === rItem.productId);

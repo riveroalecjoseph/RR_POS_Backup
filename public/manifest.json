@@ -1,0 +1,18 @@
+{
+  "short_name": "RR POS",
+  "name": "RR Multi-Branch POS & Inventory System",
+  "description": "Offline-First Multi-Branch Point of Sale and Inventory Management System",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#15803d",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "scope": "/"
+}

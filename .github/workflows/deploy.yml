@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages-deploy"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -60,6 +60,10 @@ jobs:
   deploy-web:
     name: Build & Deploy Web Distribution to GitHub Pages
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -80,13 +84,13 @@ jobs:
       - name: Build web distribution
         run: npm run build
 
-      - name: Configure GitHub Pages
+      - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload static artifact for GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "./dist"
+          path: dist
 
       - name: Deploy static app to GitHub Pages
         id: deployment

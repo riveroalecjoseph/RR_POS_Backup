@@ -1191,11 +1191,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "audit_logs" },
-        triggerRefresh,
-      )
-      .on(
-        "postgres_changes",
         { event: "*", schema: "public", table: "branches" },
         triggerRefresh,
       )

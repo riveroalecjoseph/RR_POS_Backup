@@ -103,14 +103,4 @@ BEGIN
     ) THEN
         ALTER PUBLICATION supabase_realtime_messages_publication ADD TABLE public.branches;
     END IF;
-
-    -- audit_logs
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_publication_tables 
-        WHERE pubname = 'supabase_realtime_messages_publication' 
-          AND schemaname = 'public' 
-          AND tablename = 'audit_logs'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime_messages_publication ADD TABLE public.audit_logs;
-    END IF;
 END $$;

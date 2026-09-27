@@ -198,6 +198,15 @@ interface AppContextType {
   logAuditEvent: (
     entry: Omit<AuditLogEntry, "id" | "timestamp">,
   ) => Promise<void>;
+
+  // Realtime Transfer Alerts
+  incomingTransferAlert: {
+    id: string;
+    transferNumber: string;
+    sourceBranchName: string;
+    timestamp: string;
+  } | null;
+  clearIncomingTransferAlert: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -296,6 +305,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+
+  // Realtime incoming transfer alert state
+  const [incomingTransferAlert, setIncomingTransferAlert] = useState<{
+    id: string;
+    transferNumber: string;
+    sourceBranchName: string;
+    timestamp: string;
+  } | null>(null);
+
+  const clearIncomingTransferAlert = useCallback(() => {
+    setIncomingTransferAlert(null);
+  }, []);
 
   // Cart state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -1088,7 +1109,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     [practiceBranchIds, toggleBranchPracticeMode],
   );
 
-  // Supabase Realtime Subscription for audit stream, transactions, transfers, stock movements, and sandbox stock
+  // Supabase Realtime Subscription for transfers, stock, catalog, staff, and transactions
   useEffect(() => {
     if (!isLiveSupabaseConfigured) return;
 
@@ -1104,22 +1125,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       .channel("audit-stream-realtime")
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "transfers" },
+        (payload: any) => {
+          triggerRefresh();
+          // Detect incoming dispatch to current branch
+          if (
+            payload.eventType === "INSERT" ||
+            (payload.eventType === "UPDATE" &&
+              payload.new?.status === "IN_TRANSIT")
+          ) {
+            const newT = payload.new;
+            if (
+              newT &&
+              currentBranch &&
+              newT.target_branch_id === currentBranch.id &&
+              newT.status === "IN_TRANSIT"
+            ) {
+              const srcBranch = branches.find(
+                (b) => b.id === newT.source_branch_id,
+              );
+              setIncomingTransferAlert({
+                id: newT.id,
+                transferNumber: newT.transfer_number || "TRF-PENDING",
+                sourceBranchName: srcBranch?.name || "Another Branch",
+                timestamp: new Date().toISOString(),
+              });
+            }
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transfer_items" },
+        triggerRefresh,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "branch_stock" },
+        triggerRefresh,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        triggerRefresh,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "categories" },
+        triggerRefresh,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        triggerRefresh,
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "transactions" },
         triggerRefresh,
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "transfers" },
-        triggerRefresh,
-      )
-      .on(
-        "postgres_changes",
         { event: "*", schema: "public", table: "stock_movements" },
-        triggerRefresh,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "practice_branch_stock" },
         triggerRefresh,
       )
       .on(
@@ -1132,18 +1199,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         { event: "*", schema: "public", table: "branches" },
         triggerRefresh,
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[Realtime] Connected to live postgres_changes broadcast stream");
+        }
+      });
 
     return () => {
       clearTimeout(debounceTimer);
       supabase.removeChannel(realtimeChannel);
     };
-  }, [refreshData]);
+  }, [refreshData, currentBranch?.id, branches]);
 
-  // Online / Offline listeners
+  // Online / Offline listeners with automatic catchup sync on reconnection
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Re-fetch latest server state to reconcile events missed while offline
+      refreshData();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -1152,7 +1229,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [refreshData]);
 
   // Filter stock for current active branch
   const branchStock = allBranchStock.filter(
@@ -2999,6 +3076,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         transactions,
         auditLogs,
         logAuditEvent,
+        incomingTransferAlert,
+        clearIncomingTransferAlert,
       }}
     >
       {children}

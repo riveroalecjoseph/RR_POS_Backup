@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AppTab } from "./types";
 import { SyncStatusBanner } from "./components/common/SyncStatusBanner";
+import { IncomingTransferAlert } from "./components/common/IncomingTransferAlert";
 import { SetPasswordModal } from "./components/common/SetPasswordModal";
 import { AppLoadingScreen } from "./components/common/AppLoadingScreen";
 import { Navbar } from "./components/layout/Navbar";
@@ -65,6 +66,9 @@ const AppContent: React.FC = () => {
     <div className="h-screen min-h-screen bg-slate-950 text-slate-100 flex flex-col w-full overflow-hidden">
       {/* Offline/Online & Sync Queue Banner */}
       <SyncStatusBanner />
+
+      {/* Realtime Incoming Transfer Notification */}
+      <IncomingTransferAlert />
 
       {/* Main Sticky Navbar (Full Viewport Width) */}
       <Navbar

@@ -339,23 +339,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const email = (user.email || "").toLowerCase().trim();
       const isSuperAdminEmail = email === "riveroalecjoseph@gmail.com";
 
-      // Extract role from app_metadata if present (e.g. from invite-user function or Supabase Auth Admin)
+      // Extract role from app_metadata or user_metadata
       const appMetadata = (user as any).app_metadata || {};
-      const appRole = appMetadata.role as UserRole | undefined;
+      const userMetadata = (user as any).user_metadata || {};
+      const metaRole = (appMetadata.role || userMetadata.role) as UserRole | undefined;
 
-      let role: UserRole = isSuperAdminEmail
+      const validRoles: UserRole[] = [
+        "super_admin",
+        "branch_manager",
+        "inventory_manager",
+        "cashier",
+      ];
+
+      // Check if user is recognized as super_admin by metadata or root email
+      const isSuperAdminCandidate =
+        isSuperAdminEmail || metaRole === "super_admin";
+
+      let role: UserRole = isSuperAdminCandidate
         ? "super_admin"
-        : appRole && ["super_admin", "inventory_manager", "cashier"].includes(appRole)
-          ? appRole
+        : metaRole && validRoles.includes(metaRole)
+          ? metaRole === "inventory_manager"
+            ? "branch_manager"
+            : metaRole
           : "cashier";
 
       let fullName = isSuperAdminEmail
         ? "Alec Joseph Rivero"
-        : ((user.user_metadata?.full_name as string) || email.split("@")[0] || "Staff Member");
-      let branchId: string | null = (appMetadata.branch_id as string) || branches[0]?.id || null;
-      let branchName = role === "super_admin" || isSuperAdminEmail
-        ? "Global Network Access"
-        : branches[0]?.name || "Assigned Branch";
+        : (userMetadata.full_name as string) ||
+          (user.user_metadata?.full_name as string) ||
+          email.split("@")[0] ||
+          "Staff Member";
+      let branchId: string | null =
+        (appMetadata.branch_id as string) ||
+        (userMetadata.branch_id as string) ||
+        branches[0]?.id ||
+        null;
+      let branchName =
+        role === "super_admin"
+          ? "Global Network Access"
+          : branches[0]?.name || "Assigned Branch";
 
       if (isLiveSupabaseConfigured) {
         try {
@@ -366,9 +388,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .maybeSingle();
 
           if (profile) {
-            role = isSuperAdminEmail
-              ? "super_admin"
-              : ((profile.role as UserRole) || role);
+            // Check if profile in database has super_admin, or if auth metadata has super_admin, or isSuperAdminEmail
+            if (profile.role === "super_admin" || isSuperAdminCandidate) {
+              role = "super_admin";
+            } else if (
+              profile.role &&
+              validRoles.includes(profile.role as UserRole)
+            ) {
+              role =
+                profile.role === "inventory_manager"
+                  ? "branch_manager"
+                  : (profile.role as UserRole);
+            } else if (metaRole && validRoles.includes(metaRole)) {
+              role =
+                metaRole === "inventory_manager"
+                  ? "branch_manager"
+                  : metaRole;
+            }
+
             fullName = profile.full_name || fullName;
             if (role === "super_admin") {
               branchId = null;
@@ -379,34 +416,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               if (b) branchName = b.name;
             }
 
-            // Guarantee super_admin role for riveroalecjoseph@gmail.com in Supabase
-            if (isSuperAdminEmail && profile.role !== "super_admin") {
+            // Guarantee super_admin role is synced in public.profiles
+            if (role === "super_admin" && profile.role !== "super_admin") {
               try {
                 await supabase
                   .from("profiles")
-                  .update({ role: "super_admin" })
+                  .update({
+                    role: "super_admin",
+                    branch_id: null,
+                    updated_at: new Date().toISOString(),
+                  })
                   .eq("id", user.id);
-              } catch {
-                // Ignore client-side RLS error
+              } catch (e) {
+                console.warn("Could not sync super_admin role to profiles:", e);
               }
             }
           } else {
-            // First time login - attempt profile record creation
+            // First time login - attempt profile record creation with resolved role
+            if (role === "super_admin") {
+              branchId = null;
+              branchName = "Global Network Access";
+            }
+
             try {
               await supabase.from("profiles").insert({
                 id: user.id,
                 email,
                 full_name: fullName,
-                role: isSuperAdminEmail ? "super_admin" : role,
+                role,
                 branch_id: role === "super_admin" ? null : branchId,
                 is_active: true,
               });
-            } catch {
-              // Ignore client-side RLS error; serverless function handles profile provisioning
-            }
-            if (role === "super_admin") {
-              branchId = null;
-              branchName = "Global Network Access";
+            } catch (insertErr) {
+              console.warn("Could not insert initial profile:", insertErr);
             }
           }
         } catch (err) {
@@ -418,9 +460,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         id: user.id,
         email,
         fullName,
-        role: isSuperAdminEmail ? "super_admin" : role,
+        role,
         branchId: role === "super_admin" ? null : branchId,
-        branchName: role === "super_admin" ? "Global Network Access" : branchName,
+        branchName:
+          role === "super_admin" ? "Global Network Access" : branchName,
       };
 
       setCurrentUser(profileObj);
@@ -740,6 +783,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           (q) => q.status === "PENDING" || q.status === "FAILED",
         );
         setPendingSyncCount(pending.length);
+
+        // 8. Re-verify and sync current user profile role if changed in Supabase
+        if (currentUser?.id && !currentUser.id.startsWith("usr-")) {
+          try {
+            const { data: freshProfile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", currentUser.id)
+              .maybeSingle();
+
+            if (freshProfile && freshProfile.role && freshProfile.role !== currentUser.role) {
+              const updatedUser: UserProfile = {
+                ...currentUser,
+                role: freshProfile.role as UserRole,
+                fullName: freshProfile.full_name || currentUser.fullName,
+                branchId: freshProfile.role === "super_admin" ? null : (freshProfile.branch_id || currentUser.branchId),
+                branchName: freshProfile.role === "super_admin" ? "Global Network Access" : currentUser.branchName,
+              };
+              setCurrentUser(updatedUser);
+              setCachedUserProfile(updatedUser);
+            }
+          } catch {
+            // Ignore background profile sync error
+          }
+        }
       } else {
         // Purely local IndexedDB mode (when no Supabase credentials)
         const b = await db.getAll("branches");
@@ -1189,7 +1257,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } else {
       // Local fallback only when Supabase is unconfigured
-      const isSuperAdmin = cleanEmail === "riveroalecjoseph@gmail.com";
+      const isSuperAdmin =
+        cleanEmail === "riveroalecjoseph@gmail.com" ||
+        cleanEmail.includes("admin");
       const profile: UserProfile = {
         id: "usr-" + Date.now(),
         email: cleanEmail,

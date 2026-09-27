@@ -375,7 +375,8 @@ RR_POS_Backup/
 │       ├── 20260922000001_initial_schema.sql             # Base schema: branches, profiles, catalog, stock, transfers, RLS
 │       ├── 20260927000002_enhance_rbac_resolution.sql    # Security definer RLS functions & profiles INSERT/DELETE policies
 │       ├── 20260928000001_catalog_integrity_and_rbac.sql # display_order, INITIAL_STOCK movement type, branch_manager RLS
-│       └── 20260928000002_streamlined_workstation.sql    # has_discrepancy column, user_profiles view & admin RLS
+│       ├── 20260928000002_streamlined_workstation.sql    # has_discrepancy column, user_profiles view & admin RLS
+│       └── 20260928000003_auth_role_elevation_and_sync.sql # Auth user creation trigger, metadata update sync, and role elevation
 ├── src/
 │   ├── components/
 │   │   ├── common/
